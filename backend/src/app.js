@@ -9,8 +9,6 @@ import { asyncHandler } from './utils/asyncHandler.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import merchantRoutes from './routes/merchants.js';
 import posDeviceRoutes from './routes/posDevices.js';
-import warehouseRoutes from './routes/warehouse.js';
-import hermesRoutes from './routes/hermes.js';
 
 export function createApp() {
   const app = express();
@@ -42,8 +40,6 @@ export function createApp() {
 
   app.use('/api/merchants', merchantRoutes);
   app.use('/api/pos-devices', posDeviceRoutes);
-  app.use('/api/wh', warehouseRoutes);
-  app.use('/api/hermes', hermesRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

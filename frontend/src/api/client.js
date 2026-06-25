@@ -40,19 +40,4 @@ export const posDevicesApi = {
   remove: (id) => request(api.delete(`/pos-devices/${id}`)),
 };
 
-// Read-only warehouse (spos.*) analytics endpoints.
-export const whApi = {
-  summary: () => request(api.get('/wh/summary')),
-  merchants: (params) => request(api.get('/wh/merchants', { params })),
-  merchant: (id) => request(api.get(`/wh/merchants/${id}`)),
-  devices: (params) => request(api.get('/wh/devices', { params })),
-  device: (id) => request(api.get(`/wh/devices/${id}`)),
-  graph: (id) => request(api.get(`/wh/graph/${id}`)),
-};
-
-// Hermes — natural-language Q&A over the warehouse.
-export const hermesApi = {
-  ask: (question) => request(api.post('/hermes/ask', { question })),
-};
-
 export default api;

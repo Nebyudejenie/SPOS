@@ -7,15 +7,6 @@ A production-ready CRUD application for managing **merchants** and **POS devices
 - **Database:** PostgreSQL 16
 - **Orchestration:** Docker + Docker Compose with health checks and a persistent DB volume
 
-### Two things live here
-1. **The CRUD app** (this README) — React + Express + Postgres + Docker, the `idea.md` baseline.
-2. **The SPOS data warehouse** — a flexible 3-layer (bronze/silver/gold) model in the `spos`
-   schema that ingests **all 372 source files** in [data/](data/) (≥358k rows) losslessly, then
-   curates them into typed, related tables and analytics views. The React frontend is now an
-   **analytics explorer** (Dashboard + Merchant/Device browsers) over that warehouse via the
-   `/api/wh/*` endpoints. See **[DATA_MODEL.md](DATA_MODEL.md)** for the design, ingestion plan,
-   and run instructions, and [etl/](etl/) for the loaders.
-
 ---
 
 ## Quick start (Docker — recommended)
@@ -28,20 +19,9 @@ cp .env.example .env
 docker compose up --build
 
 # 3. Open the app
-#    Frontend  -> http://localhost:8090
+#    Frontend  -> http://localhost:8080
 #    Backend   -> http://localhost:4000/health
 ```
-
-### Full pipeline in one command
-
-To also ingest all 372 files in [data/](data/) into the `spos` warehouse (bronze + silver):
-
-```bash
-make pipeline     # up + wait for Postgres + load_bronze + build_silver
-make psql         # poke around: SELECT * FROM spos.v_merchant_360 LIMIT 5;
-```
-
-`make` auto-detects `docker compose` (v2) or `docker-compose` (legacy). See `make help` for all targets.
 
 The database is seeded on first run with the example merchant (`SP002221`) and POS device (`TP100234`) from `idea.md`.
 
