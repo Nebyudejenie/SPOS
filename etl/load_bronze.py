@@ -87,6 +87,13 @@ def read_csv(path):
     return [("(csv)", rows)]
 
 
+def read_tsv(path):
+    # Tab-separated dumps exported as .md/.txt (e.g. merchant registration sheets).
+    with open(path, newline="", encoding="utf-8", errors="replace") as f:
+        rows = list(csv.reader(f, delimiter="\t"))
+    return [("(tsv)", rows)]
+
+
 def read_xlsx(path):
     import openpyxl
     out = []
@@ -107,7 +114,8 @@ def read_xls(path):
     return out
 
 
-READERS = {"csv": read_csv, "xlsx": read_xlsx, "xls": read_xls}
+READERS = {"csv": read_csv, "xlsx": read_xlsx, "xls": read_xls,
+           "md": read_tsv, "txt": read_tsv}
 
 
 # --------------------------------------------------------------------------- #
