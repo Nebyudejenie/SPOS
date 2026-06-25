@@ -3,12 +3,6 @@ import { whApi } from '../api/client.js';
 
 const PAGE = 25;
 
-function healthBadge(b) {
-  if (!b) return '—';
-  const cls = b === 'Green' ? 'green' : b === 'Red' ? 'red' : 'gray';
-  return <span className={`badge badge--${cls}`}>{b}</span>;
-}
-
 export default function MerchantsExplorer({ onOpenMerchant, notify }) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -45,7 +39,7 @@ export default function MerchantsExplorer({ onOpenMerchant, notify }) {
             <table className="table">
               <thead>
                 <tr><th>Code</th><th>Name</th><th>Bank</th><th>Region</th>
-                    <th>Health</th><th className="num">Devices</th><th className="num">Txn Amount</th></tr>
+                    <th>Status</th><th className="num">Devices</th><th className="num">Txn Amount</th></tr>
               </thead>
               <tbody>
                 {rows.map((m) => (
@@ -54,7 +48,7 @@ export default function MerchantsExplorer({ onOpenMerchant, notify }) {
                     <td>{m.trading_name || '—'}</td>
                     <td>{m.bank_name || '—'}</td>
                     <td>{m.region || '—'}</td>
-                    <td>{healthBadge(m.health_bucket)}</td>
+                    <td>{m.current_status || '—'}</td>
                     <td className="num">{m.device_count}</td>
                     <td className="num">{Number(m.total_txn_amount || 0).toLocaleString()}</td>
                   </tr>

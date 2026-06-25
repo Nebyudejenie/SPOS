@@ -12,19 +12,18 @@ export PGUSER     ?= postgres
 export PGPASSWORD ?= postgres
 export PGDATABASE ?= appdb
 
-.PHONY: help up down logs ps venv etl bronze silver dedup pipeline psql test clean reset
+.PHONY: help up down logs ps venv etl bronze silver pipeline psql clean reset
 
 help:
 	@echo "SPOS targets:"
 	@echo "  make up        - build & start db + backend + frontend (detached)"
 	@echo "  make pipeline  - up + wait for db + run full ETL (bronze + silver)"
 	@echo "  make etl       - run bronze + silver + dedup against the running db"
-	@echo "  make test      - run the ETL unit tests (no DB needed)"
 	@echo "  make psql      - open psql in the db container"
 	@echo "  make logs / ps - tail logs / show service status"
 	@echo "  make down      - stop services (keep data)"
 	@echo "  make reset     - stop services and wipe the Postgres volume"
-	@echo "  Frontend: http://localhost:8090   Backend: http://localhost:4000/health"
+	@echo "  Frontend: http://localhost:8080   Backend: http://localhost:4000/health"
 
 up:
 	$(COMPOSE) up -d --build
@@ -63,9 +62,6 @@ silver: venv
 
 dedup: venv
 	$(PY) etl/dedup_merchants.py --apply
-
-test: venv
-	$(PY) -m unittest discover -s etl/tests -t etl/tests -p 'test_*.py'
 
 psql:
 	docker exec -it spos-db psql -U $(PGUSER) -d $(PGDATABASE)

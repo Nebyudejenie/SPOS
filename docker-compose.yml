@@ -9,8 +9,9 @@ services:
       POSTGRES_DB: ${DB_NAME:-appdb}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # SQL in this folder runs once, on first init of an empty volume.
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # SQL in this folder runs once, on first init of an empty volume,
+      # alphabetically: init.sql (app tables) then warehouse.sql (spos schema).
+      - ./db:/docker-entrypoint-initdb.d:ro
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:

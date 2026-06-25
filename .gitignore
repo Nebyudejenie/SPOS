@@ -19,3 +19,12 @@ npm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Python venv used for data profiling/ETL
+.venv/
+
+# Profiling/exploration scratch files (contain real sample data — keep local)
+scratch_*
+
+# Raw source data (50MB of xlsx/csv) — keep out of git
+data/

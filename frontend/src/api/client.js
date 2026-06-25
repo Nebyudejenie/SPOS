@@ -40,4 +40,13 @@ export const posDevicesApi = {
   remove: (id) => request(api.delete(`/pos-devices/${id}`)),
 };
 
+// Read-only warehouse (spos.*) analytics endpoints.
+export const whApi = {
+  summary: () => request(api.get('/wh/summary')),
+  merchants: (params) => request(api.get('/wh/merchants', { params })),
+  merchant: (id) => request(api.get(`/wh/merchants/${id}`)),
+  devices: (params) => request(api.get('/wh/devices', { params })),
+  device: (id) => request(api.get(`/wh/devices/${id}`)),
+};
+
 export default api;

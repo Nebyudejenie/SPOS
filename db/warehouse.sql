@@ -473,58 +473,6 @@ SELECT m.*,
 FROM   spos.merchants m
 LEFT   JOIN spos.banks b ON b.id = m.bank_id;
 
--- Merchant Health Score (idea.md): a 0–100 composite penalized by inactivity,
--- poor device uptime, open tickets, complaints, and settlement issues.
--- Green >= 70, Yellow 40–69, Red < 40.
-CREATE OR REPLACE VIEW spos.v_merchant_health AS
-WITH dev AS (
-  SELECT current_merchant_id AS mid, count(*) AS devices,
-         count(*) FILTER (WHERE health_bucket IN ('Red','Critical')) AS bad_devices
-  FROM spos.v_pos_health WHERE current_merchant_id IS NOT NULL GROUP BY 1
-),
-txn AS (
-  SELECT merchant_id AS mid, coalesce(sum(total_transaction_count),0) AS txn_count
-  FROM spos.transaction_summaries WHERE merchant_id IS NOT NULL GROUP BY 1
-),
-tick AS (
-  SELECT merchant_id AS mid, count(*) AS open_tickets
-  FROM spos.tickets WHERE merchant_id IS NOT NULL
-    AND coalesce(status,'') NOT IN ('Closed','closed','Resolved','resolved','Done') GROUP BY 1
-),
-calls AS (
-  SELECT merchant_id AS mid,
-         count(*) FILTER (WHERE comment ~* 'no answer|not answer|switch|broken|lost|line busy|unreachable|not work|damage') AS neg
-  FROM spos.call_followups WHERE merchant_id IS NOT NULL GROUP BY 1
-),
-settle AS (
-  SELECT merchant_id AS mid, count(*) FILTER (WHERE void IS TRUE OR settled IS FALSE) AS issues
-  FROM spos.settlements WHERE merchant_id IS NOT NULL GROUP BY 1
-),
-scored AS (
-  SELECT m.id AS merchant_id,
-         GREATEST(0, LEAST(100,
-            100
-            - CASE WHEN coalesce(t.txn_count,0)=0 THEN 30 ELSE 0 END
-            - CASE WHEN coalesce(d.devices,0)>0
-                   THEN round(40.0 * d.bad_devices / d.devices) ELSE 0 END
-            - LEAST(20, coalesce(tk.open_tickets,0)*10)
-            - LEAST(15, coalesce(c.neg,0)*5)
-            - LEAST(15, coalesce(s.issues,0)*5)
-         ))::int AS health_score,
-         coalesce(d.devices,0) AS devices, coalesce(d.bad_devices,0) AS bad_devices,
-         coalesce(t.txn_count,0) AS txn_count, coalesce(tk.open_tickets,0) AS open_tickets,
-         coalesce(c.neg,0) AS complaints, coalesce(s.issues,0) AS settlement_issues
-  FROM spos.merchants m
-  LEFT JOIN dev d ON d.mid=m.id   LEFT JOIN txn t  ON t.mid=m.id
-  LEFT JOIN tick tk ON tk.mid=m.id LEFT JOIN calls c ON c.mid=m.id
-  LEFT JOIN settle s ON s.mid=m.id
-)
-SELECT *,
-       CASE WHEN health_score >= 70 THEN 'Green'
-            WHEN health_score >= 40 THEN 'Yellow'
-            ELSE 'Red' END AS health_bucket
-FROM scored;
-
 -- Knowledge-graph edges (Merchant → POS → Bank → Officer → Ticket → Txn).
 CREATE OR REPLACE VIEW spos.v_knowledge_graph_edges AS
   SELECT 'merchant'::text src_type, m.id src_id, 'bank'::text dst_type, m.bank_id dst_id, 'settles_with'::text rel

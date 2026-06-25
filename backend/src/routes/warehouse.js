@@ -16,7 +16,7 @@ function page(req) {
 // Dashboard summary — the idea.md "generate insights automatically" view.
 // ---------------------------------------------------------------------------
 router.get('/summary', asyncHandler(async (req, res) => {
-  const [counts, health, merchantHealth, banks, regions, topMerchants, txnByBank] = await Promise.all([
+  const [counts, health, banks, regions, topMerchants, txnByBank] = await Promise.all([
     query(`SELECT
               (SELECT count(*) FROM spos.merchants)             AS merchants,
               (SELECT count(*) FROM spos.pos_devices)           AS devices,
@@ -28,9 +28,6 @@ router.get('/summary', asyncHandler(async (req, res) => {
                  FROM spos.transaction_summaries)               AS total_txn_amount`),
     query(`SELECT health_bucket AS label, count(*)::int AS value
              FROM spos.v_pos_health GROUP BY 1 ORDER BY 2 DESC`),
-    query(`SELECT health_bucket AS label, count(*)::int AS value
-             FROM spos.v_merchant_health GROUP BY 1
-             ORDER BY array_position(ARRAY['Green','Yellow','Red'], health_bucket)`),
     query(`SELECT b.name AS label, count(m.id)::int AS value
              FROM spos.banks b JOIN spos.merchants m ON m.bank_id=b.id
              GROUP BY 1 ORDER BY 2 DESC LIMIT 10`),
@@ -51,7 +48,6 @@ router.get('/summary', asyncHandler(async (req, res) => {
   res.json({
     counts: counts.rows[0],
     health: health.rows,
-    merchantHealth: merchantHealth.rows,
     banks: banks.rows,
     regions: regions.rows,
     topMerchants: topMerchants.rows,
@@ -68,28 +64,23 @@ router.get('/merchants', asyncHandler(async (req, res) => {
   const where = [];
   const params = [];
 
-  // Columns are qualified with v. so the health LEFT JOIN below is unambiguous.
   if (search) {
     params.push(`%${search}%`);
-    where.push(`(v.trading_name ILIKE $${params.length} OR v.merchant_code ILIKE $${params.length}
-                 OR v.qr_merchant_id ILIKE $${params.length} OR v.phone ILIKE $${params.length})`);
+    where.push(`(trading_name ILIKE $${params.length} OR merchant_code ILIKE $${params.length}
+                 OR qr_merchant_id ILIKE $${params.length} OR phone ILIKE $${params.length})`);
   }
-  if (bank) { params.push(bank); where.push(`v.bank_name = $${params.length}`); }
-  if (status) { params.push(status); where.push(`v.current_status = $${params.length}`); }
+  if (bank) { params.push(bank); where.push(`bank_name = $${params.length}`); }
+  if (status) { params.push(status); where.push(`current_status = $${params.length}`); }
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const total = await query(
-    `SELECT count(*)::int AS n FROM spos.v_merchant_360 v ${clause}`, params);
+  const total = await query(`SELECT count(*)::int AS n FROM spos.v_merchant_360 ${clause}`, params);
   params.push(limit, offset);
   const rows = await query(
-    `SELECT v.id, v.merchant_code, v.qr_merchant_id, v.trading_name, v.business_type, v.phone,
-            v.bank_name, v.region, v.city, v.current_status, v.device_count::int,
-            v.open_tickets::int, v.total_txn_amount::numeric, v.total_txn_count::bigint,
-            h.health_score::int, h.health_bucket
-       FROM spos.v_merchant_360 v
-       LEFT JOIN spos.v_merchant_health h ON h.merchant_id = v.id
-       ${clause}
-       ORDER BY v.total_txn_amount DESC NULLS LAST, v.trading_name ASC
+    `SELECT id, merchant_code, qr_merchant_id, trading_name, business_type, phone,
+            bank_name, region, city, current_status, device_count::int,
+            open_tickets::int, total_txn_amount::numeric, total_txn_count::bigint
+       FROM spos.v_merchant_360 ${clause}
+       ORDER BY total_txn_amount DESC NULLS LAST, trading_name ASC
        LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
 
   res.json({ data: rows.rows, total: total.rows[0].n, limit, offset });
@@ -97,12 +88,7 @@ router.get('/merchants', asyncHandler(async (req, res) => {
 
 router.get('/merchants/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const m = await query(
-    `SELECT v.*, h.health_score::int, h.health_bucket, h.devices AS h_devices,
-            h.bad_devices, h.complaints, h.settlement_issues
-       FROM spos.v_merchant_360 v
-       LEFT JOIN spos.v_merchant_health h ON h.merchant_id = v.id
-       WHERE v.id = $1`, [id]);
+  const m = await query('SELECT * FROM spos.v_merchant_360 WHERE id = $1', [id]);
   if (!m.rows[0]) return res.status(404).json({ error: 'Merchant not found' });
 
   const [devices, accounts, tickets, summaries, deployments, followups] = await Promise.all([
@@ -140,59 +126,6 @@ router.get('/merchants/:id', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 // Devices (from v_device_360)
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Knowledge graph — a merchant's ego network (idea.md: connect, don't isolate).
-// ---------------------------------------------------------------------------
-router.get('/graph/:id', asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const m = await query(
-    `SELECT id, coalesce(trading_name, merchant_code, '(merchant)') AS name,
-            bank_id, sales_officer_id FROM spos.merchants WHERE id = $1`, [id]);
-  if (!m.rows[0]) return res.status(404).json({ error: 'Merchant not found' });
-  const merchant = m.rows[0];
-
-  const [bank, officer, devices, tickets, txn] = await Promise.all([
-    merchant.bank_id
-      ? query('SELECT id, name FROM spos.banks WHERE id = $1', [merchant.bank_id]) : { rows: [] },
-    merchant.sales_officer_id
-      ? query('SELECT id, full_name FROM spos.employees WHERE id = $1', [merchant.sales_officer_id])
-      : { rows: [] },
-    query(`SELECT id, coalesce(serial_number, terminal_id, '(device)') AS label, health_bucket
-             FROM spos.v_device_360 WHERE current_merchant_id = $1 LIMIT 14`, [id]),
-    query(`SELECT id, coalesce(issue, category, 'ticket') AS label FROM spos.tickets
-             WHERE merchant_id = $1 LIMIT 6`, [id]),
-    query(`SELECT coalesce(sum(total_transaction_count),0)::bigint AS c,
-                  coalesce(sum(total_transaction_amount),0)::numeric AS a
-             FROM spos.transaction_summaries WHERE merchant_id = $1`, [id]),
-  ]);
-
-  const nodes = [{ id: `m:${merchant.id}`, type: 'merchant', label: merchant.name }];
-  const edges = [];
-  if (bank.rows[0]) {
-    nodes.push({ id: `b:${bank.rows[0].id}`, type: 'bank', label: bank.rows[0].name });
-    edges.push({ source: `m:${merchant.id}`, target: `b:${bank.rows[0].id}`, rel: 'settles_with' });
-  }
-  if (officer.rows[0]) {
-    nodes.push({ id: `e:${officer.rows[0].id}`, type: 'officer', label: officer.rows[0].full_name });
-    edges.push({ source: `m:${merchant.id}`, target: `e:${officer.rows[0].id}`, rel: 'sold_by' });
-  }
-  for (const d of devices.rows) {
-    nodes.push({ id: `d:${d.id}`, type: 'device', label: d.label, health: d.health_bucket });
-    edges.push({ source: `m:${merchant.id}`, target: `d:${d.id}`, rel: 'operates' });
-  }
-  for (const t of tickets.rows) {
-    nodes.push({ id: `t:${t.id}`, type: 'ticket', label: t.label });
-    edges.push({ source: `m:${merchant.id}`, target: `t:${t.id}`, rel: 'raised' });
-  }
-  if (Number(txn.rows[0].c) > 0) {
-    nodes.push({ id: `x:${merchant.id}`, type: 'transactions',
-      label: `${Number(txn.rows[0].c).toLocaleString()} txns` });
-    edges.push({ source: `m:${merchant.id}`, target: `x:${merchant.id}`, rel: 'transacted' });
-  }
-
-  res.json({ nodes, edges });
-}));
-
 router.get('/devices', asyncHandler(async (req, res) => {
   const { limit, offset } = page(req);
   const { search, status, health } = req.query;
