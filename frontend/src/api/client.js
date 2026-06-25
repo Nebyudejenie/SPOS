@@ -47,6 +47,7 @@ export const whApi = {
   merchant: (id) => request(api.get(`/wh/merchants/${id}`)),
   devices: (params) => request(api.get('/wh/devices', { params })),
   device: (id) => request(api.get(`/wh/devices/${id}`)),
+  graph: (id) => request(api.get(`/wh/graph/${id}`)),
 };
 
 export default api;

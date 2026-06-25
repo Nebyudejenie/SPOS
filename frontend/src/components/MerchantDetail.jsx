@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { whApi } from '../api/client.js';
+import KnowledgeGraph from './KnowledgeGraph.jsx';
 
 function Row({ k, v }) {
   if (v === null || v === undefined || v === '') return null;
@@ -9,6 +10,7 @@ function Row({ k, v }) {
 export default function MerchantDetail({ id, onClose, onOpenDevice, notify }) {
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showGraph, setShowGraph] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -48,6 +50,13 @@ export default function MerchantDetail({ id, onClose, onOpenDevice, notify }) {
               <Row k="Devices" v={d.merchant.device_count} />
               <Row k="Total Txn (Birr)" v={Number(d.merchant.total_txn_amount || 0).toLocaleString()} />
             </div>
+
+            <div className="detail__bar">
+              <button className="btn btn--sm" onClick={() => setShowGraph((s) => !s)}>
+                {showGraph ? 'Hide' : 'Show'} knowledge graph
+              </button>
+            </div>
+            {showGraph && <KnowledgeGraph merchantId={id} notify={notify} />}
 
             <h3>Devices ({d.devices.length})</h3>
             {d.devices.length === 0 ? <p className="muted">None.</p> : (

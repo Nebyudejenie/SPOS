@@ -140,6 +140,59 @@ router.get('/merchants/:id', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 // Devices (from v_device_360)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Knowledge graph — a merchant's ego network (idea.md: connect, don't isolate).
+// ---------------------------------------------------------------------------
+router.get('/graph/:id', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const m = await query(
+    `SELECT id, coalesce(trading_name, merchant_code, '(merchant)') AS name,
+            bank_id, sales_officer_id FROM spos.merchants WHERE id = $1`, [id]);
+  if (!m.rows[0]) return res.status(404).json({ error: 'Merchant not found' });
+  const merchant = m.rows[0];
+
+  const [bank, officer, devices, tickets, txn] = await Promise.all([
+    merchant.bank_id
+      ? query('SELECT id, name FROM spos.banks WHERE id = $1', [merchant.bank_id]) : { rows: [] },
+    merchant.sales_officer_id
+      ? query('SELECT id, full_name FROM spos.employees WHERE id = $1', [merchant.sales_officer_id])
+      : { rows: [] },
+    query(`SELECT id, coalesce(serial_number, terminal_id, '(device)') AS label, health_bucket
+             FROM spos.v_device_360 WHERE current_merchant_id = $1 LIMIT 14`, [id]),
+    query(`SELECT id, coalesce(issue, category, 'ticket') AS label FROM spos.tickets
+             WHERE merchant_id = $1 LIMIT 6`, [id]),
+    query(`SELECT coalesce(sum(total_transaction_count),0)::bigint AS c,
+                  coalesce(sum(total_transaction_amount),0)::numeric AS a
+             FROM spos.transaction_summaries WHERE merchant_id = $1`, [id]),
+  ]);
+
+  const nodes = [{ id: `m:${merchant.id}`, type: 'merchant', label: merchant.name }];
+  const edges = [];
+  if (bank.rows[0]) {
+    nodes.push({ id: `b:${bank.rows[0].id}`, type: 'bank', label: bank.rows[0].name });
+    edges.push({ source: `m:${merchant.id}`, target: `b:${bank.rows[0].id}`, rel: 'settles_with' });
+  }
+  if (officer.rows[0]) {
+    nodes.push({ id: `e:${officer.rows[0].id}`, type: 'officer', label: officer.rows[0].full_name });
+    edges.push({ source: `m:${merchant.id}`, target: `e:${officer.rows[0].id}`, rel: 'sold_by' });
+  }
+  for (const d of devices.rows) {
+    nodes.push({ id: `d:${d.id}`, type: 'device', label: d.label, health: d.health_bucket });
+    edges.push({ source: `m:${merchant.id}`, target: `d:${d.id}`, rel: 'operates' });
+  }
+  for (const t of tickets.rows) {
+    nodes.push({ id: `t:${t.id}`, type: 'ticket', label: t.label });
+    edges.push({ source: `m:${merchant.id}`, target: `t:${t.id}`, rel: 'raised' });
+  }
+  if (Number(txn.rows[0].c) > 0) {
+    nodes.push({ id: `x:${merchant.id}`, type: 'transactions',
+      label: `${Number(txn.rows[0].c).toLocaleString()} txns` });
+    edges.push({ source: `m:${merchant.id}`, target: `x:${merchant.id}`, rel: 'transacted' });
+  }
+
+  res.json({ nodes, edges });
+}));
+
 router.get('/devices', asyncHandler(async (req, res) => {
   const { limit, offset } = page(req);
   const { search, status, health } = req.query;
