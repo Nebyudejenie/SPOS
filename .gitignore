@@ -28,3 +28,7 @@ scratch_*
 
 # Raw source data (50MB of xlsx/csv) — keep out of git
 data/
+
+# Python bytecode
+__pycache__/
+*.pyc

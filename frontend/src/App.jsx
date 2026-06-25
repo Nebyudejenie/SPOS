@@ -5,11 +5,13 @@ import MerchantsExplorer from './components/MerchantsExplorer.jsx';
 import DevicesExplorer from './components/DevicesExplorer.jsx';
 import MerchantDetail from './components/MerchantDetail.jsx';
 import DeviceDetail from './components/DeviceDetail.jsx';
+import HermesChat from './components/HermesChat.jsx';
 
 const TABS = [
   ['dashboard', 'Dashboard'],
   ['merchants', 'Merchants'],
   ['devices', 'POS Devices'],
+  ['hermes', 'Ask Hermes'],
 ];
 
 export default function App() {
@@ -44,6 +46,7 @@ export default function App() {
         {tab === 'devices' && (
           <DevicesExplorer notify={notify} onOpenDevice={setOpenDevice} />
         )}
+        {tab === 'hermes' && <HermesChat notify={notify} />}
       </main>
 
       {openMerchant && (

@@ -46,63 +46,17 @@ CORE TABLES:
 - spos.device_assignments(device_id, merchant_id, event_type, event_date, received_by, condition, ...)
 - spos.call_followups(merchant_id, device_serial, agent_name, comment, ...)
 - spos.sim_cards(sim_number, msisdn, iccid, status, ...)
-
-YOUR PERSISTENT MEMORY (schema "hermes", read/write across sessions):
-- Use the "recall" tool to look up things you learned before; "remember" to store durable
-  facts, insights, glossary terms, or corrections; "log_event" to record significant findings.
-- Store knowledge, NOT secrets — never put passwords, API keys, or tokens in memory.
-- At the start of analysis, consider what you already remember; after finding something
-  durable and reusable, remember it so future sessions benefit.
 `;
 
-const TOOLS = [
-  {
-    name: 'run_sql',
-    description: 'Run a single read-only SQL SELECT/WITH query against the warehouse (spos.* or hermes.*) and return rows (max 200).',
-    input_schema: {
-      type: 'object',
-      properties: { query: { type: 'string', description: 'A single read-only SQL statement.' } },
-      required: ['query'],
-    },
+const TOOLS = [{
+  name: 'run_sql',
+  description: 'Run a single read-only SQL SELECT/WITH query against the spos schema and return rows (max 200).',
+  input_schema: {
+    type: 'object',
+    properties: { query: { type: 'string', description: 'A single read-only SQL statement.' } },
+    required: ['query'],
   },
-  {
-    name: 'recall',
-    description: 'Read from your persistent memory (hermes.memory). Filter by kind/key or free-text search.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        kind: { type: 'string' }, key: { type: 'string' },
-        search: { type: 'string', description: 'free-text match on key/context/value' },
-      },
-    },
-  },
-  {
-    name: 'remember',
-    description: 'Store or update a durable fact/insight in persistent memory (upsert by kind+key). Never store secrets.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        kind: { type: 'string', description: "e.g. 'fact','insight','glossary','preference'" },
-        key: { type: 'string' },
-        value: { type: 'object', description: 'JSON value to remember' },
-        context: { type: 'string' },
-      },
-      required: ['kind', 'key', 'value'],
-    },
-  },
-  {
-    name: 'log_event',
-    description: 'Append a significant observation/action to the hermes.events log.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        entity_type: { type: 'string' }, entity_id: { type: 'string' },
-        action: { type: 'string' }, payload: { type: 'object' }, source: { type: 'string' },
-      },
-      required: ['entity_type', 'action'],
-    },
-  },
-];
+}];
 
 // Reject anything that isn't a single SELECT/WITH statement.
 function isSafeSelect(sql) {
@@ -112,45 +66,6 @@ function isSafeSelect(sql) {
   if (!/^(select|with)\b/i.test(s)) return false;          // must read
   if (/\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|call|do)\b/i.test(s)) return false;
   return true;
-}
-
-// ---- Hermes memory (writes are confined to the hermes schema) --------------
-export async function memRemember({ kind, key, value, context }) {
-  if (!kind || !key) throw new Error('kind and key are required');
-  const r = await pool.query(
-    `INSERT INTO hermes.memory (kind, key, value, context) VALUES ($1, $2, $3::jsonb, $4)
-       ON CONFLICT (kind, key) DO UPDATE
-         SET value = EXCLUDED.value, context = EXCLUDED.context
-       RETURNING id`,
-    [String(kind), String(key), JSON.stringify(value ?? {}), context ? String(context) : null]);
-  return r.rows[0].id;
-}
-
-export async function memRecall({ kind, key, search, limit = 25 } = {}) {
-  const where = [];
-  const params = [];
-  if (kind) { params.push(kind); where.push(`kind = $${params.length}`); }
-  if (key) { params.push(key); where.push(`key = $${params.length}`); }
-  if (search) {
-    params.push(`%${search}%`);
-    where.push(`(key ILIKE $${params.length} OR context ILIKE $${params.length} OR value::text ILIKE $${params.length})`);
-  }
-  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  params.push(Math.min(Number(limit) || 25, 100));
-  const r = await pool.query(
-    `SELECT kind, key, value, context, updated_at FROM hermes.memory ${clause}
-       ORDER BY updated_at DESC LIMIT $${params.length}`, params);
-  return r.rows;
-}
-
-export async function logEvent({ entity_type, entity_id, action, payload, source }) {
-  if (!entity_type || !action) throw new Error('entity_type and action are required');
-  const r = await pool.query(
-    `INSERT INTO hermes.events (entity_type, entity_id, action, payload, source)
-       VALUES ($1, $2, $3, $4::jsonb, $5) RETURNING id`,
-    [String(entity_type), entity_id ? String(entity_id) : null, String(action),
-     payload ? JSON.stringify(payload) : null, source ? String(source) : 'hermes']);
-  return r.rows[0].id;
 }
 
 // Execute inside a READ ONLY transaction with a statement timeout — defense in
@@ -179,29 +94,15 @@ router.post('/ask', asyncHandler(async (req, res) => {
   }
 
   const client = new Anthropic();
-
-  // Inject what Hermes already remembers so she starts informed (cross-session).
-  let memoryDigest = '';
-  try {
-    const recent = await memRecall({ limit: 20 });
-    if (recent.length) {
-      memoryDigest = '\n\nWHAT YOU REMEMBER (most recent):\n' + recent
-        .map((m) => `- [${m.kind}] ${m.key}: ${JSON.stringify(m.value).slice(0, 200)}`)
-        .join('\n');
-    }
-  } catch { /* hermes schema may not exist yet — ignore */ }
-  const system = SCHEMA_DOC + memoryDigest;
-
   const messages = [{ role: 'user', content: question }];
   const sqlRuns = [];
-  const memoryWrites = [];
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 4096,
       thinking: { type: 'adaptive' },
-      system,
+      system: SCHEMA_DOC,
       tools: TOOLS,
       messages,
     });
@@ -216,37 +117,27 @@ router.post('/ask', asyncHandler(async (req, res) => {
     const toolUses = response.content.filter((b) => b.type === 'tool_use');
     if (toolUses.length === 0) {
       const answer = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-      return res.json({ answer, sql: sqlRuns, memory: memoryWrites });
+      return res.json({ answer, sql: sqlRuns });
     }
 
     const toolResults = [];
     for (const tu of toolUses) {
-      let content;
-      let isError = false;
+      const q = tu.input?.query || '';
       try {
-        if (tu.name === 'run_sql') {
-          const q = tu.input?.query || '';
-          const rows = await runReadOnlySql(q);
-          sqlRuns.push({ query: q, rowCount: rows.length });
-          content = JSON.stringify(rows).slice(0, 12000);
-        } else if (tu.name === 'recall') {
-          content = JSON.stringify(await memRecall(tu.input || {})).slice(0, 12000);
-        } else if (tu.name === 'remember') {
-          const id = await memRemember(tu.input || {});
-          memoryWrites.push({ op: 'remember', kind: tu.input?.kind, key: tu.input?.key });
-          content = `Remembered (id ${id}).`;
-        } else if (tu.name === 'log_event') {
-          const id = await logEvent(tu.input || {});
-          memoryWrites.push({ op: 'log_event', entity: tu.input?.entity_type, action: tu.input?.action });
-          content = `Logged (id ${id}).`;
-        } else {
-          isError = true; content = `Unknown tool: ${tu.name}`;
-        }
+        const rows = await runReadOnlySql(q);
+        sqlRuns.push({ query: q, rowCount: rows.length });
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: tu.id,
+          content: JSON.stringify(rows).slice(0, 12000), // bound payload back to the model
+        });
       } catch (err) {
-        isError = true; content = `Error: ${err.message}`;
-        if (tu.name === 'run_sql') sqlRuns.push({ query: tu.input?.query, error: err.message });
+        sqlRuns.push({ query: q, error: err.message });
+        toolResults.push({
+          type: 'tool_result', tool_use_id: tu.id, is_error: true,
+          content: `Error: ${err.message}`,
+        });
       }
-      toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content, ...(isError ? { is_error: true } : {}) });
     }
     messages.push({ role: 'user', content: toolResults });
   }
@@ -254,14 +145,8 @@ router.post('/ask', asyncHandler(async (req, res) => {
   logger.warn('Hermes hit max turns', { question });
   return res.json({
     answer: "I couldn't complete the analysis within the step limit. Try a more specific question.",
-    sql: sqlRuns, memory: memoryWrites,
+    sql: sqlRuns,
   });
-}));
-
-// Inspect Hermes's persistent memory (read-only) — for transparency / a future UI.
-router.get('/memory', asyncHandler(async (req, res) => {
-  const rows = await memRecall({ kind: req.query.kind, search: req.query.search, limit: 100 });
-  res.json({ data: rows, count: rows.length });
 }));
 
 export default router;

@@ -50,4 +50,9 @@ export const whApi = {
   graph: (id) => request(api.get(`/wh/graph/${id}`)),
 };
 
+// Hermes — natural-language Q&A over the warehouse.
+export const hermesApi = {
+  ask: (question) => request(api.post('/hermes/ask', { question })),
+};
+
 export default api;
