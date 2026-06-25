@@ -25,7 +25,16 @@ export default function MerchantDetail({ id, onClose, onOpenDevice, notify }) {
         {loading && <p className="muted">Loading…</p>}
         {d && (
           <>
-            <h2>{d.merchant.trading_name || d.merchant.merchant_code || '(unnamed merchant)'}</h2>
+            <h2>
+              {d.merchant.trading_name || d.merchant.merchant_code || '(unnamed merchant)'}
+              {d.merchant.health_bucket && (
+                <span className={`badge badge--${d.merchant.health_bucket === 'Green' ? 'green'
+                  : d.merchant.health_bucket === 'Red' ? 'red' : 'gray'}`}
+                  style={{ marginLeft: '.6rem', fontSize: '.7rem', verticalAlign: 'middle' }}>
+                  Health {d.merchant.health_score} · {d.merchant.health_bucket}
+                </span>
+              )}
+            </h2>
             <div className="kvs">
               <Row k="Merchant Code" v={d.merchant.merchant_code} />
               <Row k="QR Merchant ID" v={d.merchant.qr_merchant_id} />

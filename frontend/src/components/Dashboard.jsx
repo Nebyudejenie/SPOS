@@ -72,6 +72,10 @@ export default function Dashboard({ onOpenMerchant, notify }) {
           <Bars rows={data.health} />
         </section>
         <section className="panel">
+          <h2>Merchant Health</h2>
+          <Bars rows={data.merchantHealth || []} />
+        </section>
+        <section className="panel">
           <h2>Merchants by Bank</h2>
           <Bars rows={data.banks} color="#2563eb" />
         </section>
