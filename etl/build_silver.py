@@ -357,7 +357,8 @@ BANK_CANON = [
 def canon_bank(n):
     letters = re.sub(r"[^a-z]", "", n.lower())
     for needle, canon in BANK_CANON:
-        if needle in letters:
+        # compare letters-only on both sides so multi-word needles match too
+        if needle.replace(" ", "") in letters:
             return canon
     return n.strip()
 
