@@ -28,7 +28,7 @@ cp .env.example .env
 docker compose up --build
 
 # 3. Open the app
-#    Frontend  -> http://localhost:8080
+#    Frontend  -> http://localhost:8090
 #    Backend   -> http://localhost:4000/health
 ```
 

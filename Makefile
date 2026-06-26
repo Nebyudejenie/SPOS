@@ -24,7 +24,7 @@ help:
 	@echo "  make logs / ps - tail logs / show service status"
 	@echo "  make down      - stop services (keep data)"
 	@echo "  make reset     - stop services and wipe the Postgres volume"
-	@echo "  Frontend: http://localhost:8080   Backend: http://localhost:4000/health"
+	@echo "  Frontend: http://localhost:8090   Backend: http://localhost:4000/health"
 
 up:
 	$(COMPOSE) up -d --build
