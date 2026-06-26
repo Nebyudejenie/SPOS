@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+frontend/dist/
+
+# Env files (never commit secrets)
+.env
+**/.env
+!.env.example
+!**/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python venv used for data profiling/ETL
+.venv/
+
+# Profiling/exploration scratch files (contain real sample data — keep local)
+scratch_*
+
+# Raw source data (50MB of xlsx/csv) — keep out of git
+data/
