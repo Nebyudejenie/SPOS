@@ -46,12 +46,3 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_memory_touch ON hermes.memory;
 CREATE TRIGGER trg_memory_touch BEFORE UPDATE ON hermes.memory
   FOR EACH ROW EXECUTE FUNCTION hermes.touch_updated_at();
-
--- Baseline domain knowledge so Hermes starts informed on a fresh deploy.
-INSERT INTO hermes.memory (kind, key, value, context) VALUES
- ('glossary','merchant_code','{"meaning":"SP-prefixed POS merchant ID, distinct from qr_merchant_id (the QR id)"}','SPOS domain'),
- ('glossary','birr','{"meaning":"Ethiopian Birr — the currency for all amounts"}','SPOS domain'),
- ('glossary','health_bucket','{"meaning":"Green/Yellow/Red status for merchant or POS device health"}','SPOS domain'),
- ('fact','data_source','{"summary":"Warehouse built from 372 source files via bronze/silver/gold ETL"}','provenance'),
- ('fact','warehouse_access','{"note":"Hermes reads spos.* read-only; writes only to the hermes schema; never stores secrets"}','policy')
-ON CONFLICT (kind, key) DO NOTHING;
