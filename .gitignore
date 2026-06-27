@@ -29,6 +29,9 @@ scratch_*
 # Raw source data (50MB of xlsx/csv) — keep out of git
 data/
 
+# DB seed dumps (contain merchant PII — keep local/private)
+db/seed/
+
 # Python bytecode
 __pycache__/
 *.pyc
